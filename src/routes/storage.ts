@@ -1,0 +1,157 @@
+import express, { Router, type IRouter, type Request, type Response } from "express";
+import { Readable } from "stream";
+import {
+  RequestUploadUrlBody,
+  RequestUploadUrlResponse,
+} from "@workspace/api-zod";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+
+const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
+
+/**
+ * POST /storage/uploads/request-url
+ *
+ * Request a presigned URL for file upload.
+ * The client sends JSON metadata (name, size, contentType) — NOT the file.
+ * Then uploads the file directly to the returned presigned URL.
+ */
+router.post("/storage/uploads/request-url", async (req: Request, res: Response) => {
+  const parsed = RequestUploadUrlBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Missing or invalid required fields" });
+    return;
+  }
+
+  try {
+    const { name, size, contentType } = parsed.data;
+
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+
+    res.json(
+      RequestUploadUrlResponse.parse({
+        uploadURL,
+        objectPath,
+        metadata: { name, size, contentType },
+      }),
+    );
+  } catch (error) {
+    req.log.error({ err: error }, "Error generating upload URL");
+    res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+});
+
+/**
+ * GET /storage/public-objects/*
+ *
+ * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
+ * These are unconditionally public — no authentication or ACL checks.
+ * IMPORTANT: Always provide this endpoint when object storage is set up.
+ */
+router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.filePath;
+    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
+    const file = await objectStorageService.searchPublicObject(filePath);
+    if (!file) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+
+    const response = await objectStorageService.downloadObject(file);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    req.log.error({ err: error }, "Error serving public object");
+    res.status(500).json({ error: "Failed to serve public object" });
+  }
+});
+
+import fs from "fs";
+import path from "path";
+
+// Local storage directory for non-Replit environments
+const LOCAL_STORAGE_DIR = path.resolve(process.cwd(), "storage_data");
+if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
+  fs.mkdirSync(LOCAL_STORAGE_DIR, { recursive: true });
+}
+
+/**
+ * PUT /storage/local-upload/:id
+ * 
+ * Local fallback for file uploads when not on Replit.
+ */
+router.put("/storage/local-upload/:id", express.raw({ limit: "25mb", type: "*/*" }), async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id;
+    const id = Array.isArray(rawId) ? rawId[0] : rawId;
+    if (!id) {
+      res.status(400).json({ error: "Missing id" });
+      return;
+    }
+
+    const filePath = path.join(LOCAL_STORAGE_DIR, id);
+    fs.writeFileSync(filePath, req.body);
+    res.status(200).send("OK");
+  } catch (err) {
+    req.log.error({ err }, "Local upload failed");
+    res.status(500).json({ error: "Local upload failed" });
+  }
+});
+
+/**
+ * GET /storage/objects/*
+ * 
+ * Updated to support local disk fallback.
+ */
+router.get("/storage/objects/*path", async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    
+    if (!process.env.REPL_ID) {
+      // Local fallback
+      const id = wildcardPath.split("/").pop()!;
+      const filePath = path.join(LOCAL_STORAGE_DIR, id);
+      if (!fs.existsSync(filePath)) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+      res.sendFile(filePath);
+      return;
+    }
+
+    const objectPath = `/objects/${wildcardPath}`;
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const response = await objectStorageService.downloadObject(objectFile);
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+      nodeStream.pipe(res);
+    } else {
+      res.end();
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      req.log.warn({ err: error }, "Object not found");
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
+    req.log.error({ err: error }, "Error serving object");
+    res.status(500).json({ error: "Failed to serve object" });
+  }
+});
+
+export default router;

@@ -1,0 +1,25 @@
+# Node
+node_modules/
+
+# Env files (IMPORTANT)
+.env
+
+# Build output
+dist/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+
+# MongoDB / Database files
+data/
+storage_data/
+
+# Replit junk
+.replit-artifact/
+
+# Misc
+attached_assets/

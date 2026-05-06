@@ -1,0 +1,992 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Vahlay Connect — real-time chat platform
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+  - name: auth
+  - name: users
+  - name: conversations
+  - name: messages
+  - name: notifications
+  - name: admin
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Authenticate with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Sign out
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get the current authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Admin creates a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user (admin or self for name/avatar)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Admin deletes a user
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [conversations]
+      summary: List conversations the current user is a member of
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationList"
+
+  /conversations/direct:
+    post:
+      operationId: createDirectConversation
+      tags: [conversations]
+      summary: Create or fetch a 1:1 conversation with a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDirectBody"
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/group:
+    post:
+      operationId: createGroupConversation
+      tags: [conversations]
+      summary: Create a group conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      tags: [conversations]
+      summary: Get a conversation with members
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateConversation
+      tags: [conversations]
+      summary: Update group conversation (rename, pin, mute)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}/leave:
+    post:
+      operationId: leaveConversation
+      tags: [conversations]
+      summary: Leave a group conversation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Left
+
+  /conversations/{id}/read:
+    post:
+      operationId: markConversationRead
+      tags: [conversations]
+      summary: Mark conversation as read up to latest message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Read
+
+  /conversations/{id}/members:
+    post:
+      operationId: addConversationMember
+      tags: [conversations]
+      summary: Add a member to a group
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}/members/{userId}:
+    delete:
+      operationId: removeConversationMember
+      tags: [conversations]
+      summary: Remove a member from a group
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}/admins/{userId}:
+    post:
+      operationId: promoteConversationAdmin
+      tags: [conversations]
+      summary: Promote a member to group admin
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}/messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages (paginated, newest first)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: before
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageList"
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{id}:
+    patch:
+      operationId: editMessage
+      tags: [messages]
+      summary: Edit a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditMessageBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+    delete:
+      operationId: deleteMessage
+      tags: [messages]
+      summary: Delete a message
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /messages/search:
+    get:
+      operationId: searchMessages
+      tags: [messages]
+      summary: Search messages across user's conversations
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: conversationId
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSearchResults"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List the current user's notifications
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "204":
+          description: Done
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Admin dashboard summary
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/conversations:
+    get:
+      operationId: listAllConversations
+      tags: [admin]
+      summary: List every conversation (admin)
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationList"
+
+  /admin/activity:
+    get:
+      operationId: getAdminActivity
+      tags: [admin]
+      summary: Recent platform activity feed (admin)
+      responses:
+        "200":
+          description: Activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityList"
+
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Upload URL ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        title:
+          type: ["string", "null"]
+        avatarColor:
+          type: string
+        status:
+          type: string
+          enum: [online, away, offline, busy, dnd, brb]
+
+        lastSeenAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, email, name, role, avatarColor, status, createdAt]
+
+    UserList:
+      type: array
+      items:
+        $ref: "#/components/schemas/User"
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    AuthSession:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required: [token, user]
+
+    CreateUserBody:
+      type: object
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+          enum: [admin, user]
+        title:
+          type: ["string", "null"]
+      required: [email, name, password, role]
+
+    UpdateUserBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        role:
+          type: ["string", "null"]
+          enum: [admin, user, null]
+        password:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [online, away, offline, busy, dnd, brb, null]
+
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [direct, group]
+        name:
+          type: ["string", "null"]
+        iconEmoji:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationMember"
+        lastMessage:
+          oneOf:
+            - $ref: "#/components/schemas/Message"
+            - type: "null"
+        unreadCount:
+          type: integer
+        pinned:
+          type: boolean
+        muted:
+          type: boolean
+      required: [id, kind, createdAt, members, unreadCount, pinned, muted]
+
+    ConversationMember:
+      type: object
+      properties:
+        userId:
+          type: integer
+        isAdmin:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/User"
+      required: [userId, isAdmin, user]
+
+    ConversationList:
+      type: array
+      items:
+        $ref: "#/components/schemas/Conversation"
+
+    CreateDirectBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+      required: [userId]
+
+    CreateGroupBody:
+      type: object
+      properties:
+        name:
+          type: string
+        memberIds:
+          type: array
+          items:
+            type: integer
+      required: [name, memberIds]
+
+    UpdateConversationBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        iconEmoji:
+          type: ["string", "null"]
+        pinned:
+          type: ["boolean", "null"]
+        muted:
+          type: ["boolean", "null"]
+
+    MemberBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+      required: [userId]
+
+    MessageAttachment:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+        size:
+          type: integer
+        mimeType:
+          type: string
+      required: [name, url, size, mimeType]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        conversationId:
+          type: integer
+        authorId:
+          type: integer
+        author:
+          $ref: "#/components/schemas/User"
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageAttachment"
+        replyToId:
+          type: ["integer", "null"]
+        replyTo:
+          oneOf:
+            - $ref: "#/components/schemas/MessagePreview"
+            - type: "null"
+        mentions:
+          type: array
+          items:
+            type: integer
+        mentionsEveryone:
+          type: boolean
+        editedAt:
+          type: ["string", "null"]
+          format: date-time
+        deletedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        readBy:
+          type: array
+          items:
+            type: integer
+      required:
+        - id
+        - conversationId
+        - authorId
+        - author
+        - content
+        - attachments
+        - mentions
+        - mentionsEveryone
+        - createdAt
+        - readBy
+
+    MessagePreview:
+      type: object
+      properties:
+        id:
+          type: integer
+        authorId:
+          type: integer
+        authorName:
+          type: string
+        content:
+          type: string
+      required: [id, authorId, authorName, content]
+
+    MessageList:
+      type: array
+      items:
+        $ref: "#/components/schemas/Message"
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageAttachment"
+        replyToId:
+          type: ["integer", "null"]
+        clientId:
+          type: ["string", "null"]
+        mentions:
+          type: array
+          items:
+            type: integer
+        mentionsEveryone:
+          type: boolean
+      required: [content]
+
+    RequestUploadUrlBody:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required: [name, size, contentType]
+
+    RequestUploadUrlResponse:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+            size:
+              type: integer
+            contentType:
+              type: string
+          required: [name, size, contentType]
+      required: [uploadURL, objectPath, metadata]
+
+    EditMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required: [content]
+
+    MessageSearchResult:
+      type: object
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
+        conversation:
+          $ref: "#/components/schemas/Conversation"
+      required: [message, conversation]
+
+    MessageSearchResults:
+      type: array
+      items:
+        $ref: "#/components/schemas/MessageSearchResult"
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          type: string
+          enum: [mention, message, edit, delete, group_invite]
+        title:
+          type: string
+        body:
+          type: string
+        conversationId:
+          type: ["integer", "null"]
+        messageId:
+          type: ["integer", "null"]
+        readAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, title, body, createdAt]
+
+    NotificationList:
+      type: array
+      items:
+        $ref: "#/components/schemas/Notification"
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        onlineUsers:
+          type: integer
+        totalConversations:
+          type: integer
+        totalGroups:
+          type: integer
+        totalMessages:
+          type: integer
+        messagesToday:
+          type: integer
+        topUsers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopUser"
+      required:
+        - totalUsers
+        - onlineUsers
+        - totalConversations
+        - totalGroups
+        - totalMessages
+        - messagesToday
+        - topUsers
+
+    TopUser:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        messageCount:
+          type: integer
+      required: [user, messageCount]
+
+    ActivityEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [message, login, user_created, group_created]
+        title:
+          type: string
+        subtitle:
+          type: string
+        actorId:
+          type: ["integer", "null"]
+        actorName:
+          type: ["string", "null"]
+        conversationId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, title, subtitle, createdAt]
+
+    ActivityList:
+      type: array
+      items:
+        $ref: "#/components/schemas/ActivityEntry"
