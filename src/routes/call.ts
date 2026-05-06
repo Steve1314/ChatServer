@@ -1,21 +1,26 @@
 import { Router } from "express";
 import { requireAuth } from "../middlewares/auth";
+import { getActiveCalls } from "../lib/realtime";
 
 const router = Router();
 
 /**
- * GET /api/ice-config
- * Returns ICE server configuration for WebRTC.
- * Uses Metered.ca TURN servers if env vars are set,
- * otherwise falls back to public STUN/TURN servers.
+ * GET /api/call/active
+ * Returns a list of currently active calls tracked by the server.
  */
-router.get("/ice-config", requireAuth, (_req, res) => {
-  console.log("[ICE] Config requested by user:", _req.user?.id);
-  const iceServers: any[] = [];
+router.get("/active", requireAuth, (_req, res) => {
+  res.json({ calls: getActiveCalls() });
+});
 
-  // If a custom Metered account is configured, use it
+/**
+ * GET /api/call/ice-config
+ * Returns ICE server configuration for WebRTC.
+ */
+router.get("/ice-config", (req, res) => {
   const meteredKey = process.env.METERED_API_KEY;
-  const meteredDomain = process.env.METERED_DOMAIN; // e.g. "yourapp.metered.live"
+  const meteredDomain = process.env.METERED_DOMAIN;
+
+  const iceServers: any[] = [];
 
   if (meteredKey && meteredDomain) {
     iceServers.push(
@@ -37,12 +42,11 @@ router.get("/ice-config", requireAuth, (_req, res) => {
       },
     );
   } else {
-    // Public fallbacks – reliable enough for LAN/same-network calls
+    // Public fallbacks
     iceServers.push(
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
       { urls: "stun:stun.cloudflare.com" },
-      // openrelay free TURN – works for relay when peers are on different networks
       {
         urls: "turn:openrelay.metered.ca:80",
         username: "openrelayproject",
@@ -62,7 +66,7 @@ router.get("/ice-config", requireAuth, (_req, res) => {
         urls: "turn:openrelay.metered.ca:443?transport=tcp",
         username: "openrelayproject",
         credential: "openrelayproject",
-      },
+      }
     );
   }
 
